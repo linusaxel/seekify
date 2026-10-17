@@ -1,0 +1,22 @@
+#!/bin/sh
+# sockseek on-complete hook: sockseek-convert <aiff|wav> <file>
+# Converts a downloaded FLAC (same bit depth, tags + cover kept), deletes the
+# FLAC, and tells sockseek the new path. Non-FLAC files are left alone.
+# Absolute paths: sockseek doesn't run hooks with a login PATH.
+set -f  # no globbing: "0:v?" below must stay literal
+fmt="$1"; f="$2"
+case "$f" in *.flac|*.FLAC) ;; *) exit 0 ;; esac
+bits=$(/opt/homebrew/bin/ffprobe -v error -select_streams a:0 -show_entries stream=bits_per_raw_sample -of csv=p=0 "$f")
+case "$fmt" in
+  aiff) out="${f%.*}.aif"; [ "$bits" = 24 ] && codec=pcm_s24be || codec=pcm_s16be; extra="-map 0:v? -c:v copy -write_id3v2 1" ;;
+  wav)  out="${f%.*}.wav"; [ "$bits" = 24 ] && codec=pcm_s24le || codec=pcm_s16le; extra="" ;;
+  *) exit 0 ;;
+esac
+# $extra is intentionally unquoted (word-split into flags)
+if /opt/homebrew/bin/ffmpeg -nostdin -v error -y -i "$f" -map 0:a $extra -c:a "$codec" -map_metadata 0 "$out"; then
+  rm "$f"
+  echo "ignored;$out"
+else
+  rm -f "$out"
+  exit 1
+fi
